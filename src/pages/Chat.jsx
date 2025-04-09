@@ -11,6 +11,7 @@ const Chat = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(false);  // 실시간 인식 토글 상태
   const [isSpeaking, setIsSpeaking] = useState(false);  // 현재 말하고 있는지 여부
+  const [aiResponseText, setAiResponseText] = useState(aiResponse);
   
   const mediaRecorderRef = useRef(null);  // 녹음기 인스턴스 저장
   const audioChunksRef = useRef([]);  // 녹음된 오디오 조각들
@@ -211,10 +212,41 @@ const Chat = () => {
       });
 
       const data = await res.json();
+      const recognizedText = data.text;
+
       setSttText(data.text || '음성 인식 실패');
+
+      // STT 결과가 유효한 경우에만 LLM에게 전달
+      if (recognizedText && recognizedText !== '음성 인식 실패') {
+        await fetchLLMResponse(recognizedText);
+      }
+
     } catch (err) {
       console.error('STT 요청 실패:', err);
       setSttText('STT 오류 발생');
+    }
+  };
+
+  // LLM 응답 처리
+  const fetchLLMResponse = async (message) => {
+    try {
+      const res = await fetch('https://personal-voice.onrender.com/info-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: name,
+          message
+        })
+      });
+
+      const data = await res.json();
+      setAiResponseText(data.response || '응답 없음');
+      
+    } catch (err) {
+      console.error('LLM 요청 실패:', err);
+      setAiResponseText('AI 응답 오류');
     }
   };
 
@@ -235,7 +267,7 @@ const Chat = () => {
         fontSize: '18px'
       }}>
         <strong>🤖 AI 응답:</strong>
-        <p style={{ marginTop: '10px' }}>{aiResponse}</p>
+        <p style={{ marginTop: '10px' }}>{aiResponseText}</p>
       </div>
 
       {/* 토글 버튼 */}
