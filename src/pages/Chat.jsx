@@ -9,7 +9,16 @@ const Chat = () => {
   const [sttText, setSttText] = useState('');
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
-  const audioChunksRef = useRef([]);
+  const [isAutoMode, setIsAutoMode] = useState(false);  // 실시간 인식 토글 상태
+  const [isSpeaking, setIsSpeaking] = useState(false);  // 현재 말하고 있는지 여부
+  
+  const mediaRecorderRef = useRef(null);  // 녹음기 인스턴스 저장
+  const audioChunksRef = useRef([]);  // 녹음된 오디오 조각들
+  const analyserRef = useRef(null);  // 오디오 분석기 (음성 감지용)
+  const audioContextRef = useRef(null);  // Web Audio API의 AudioContext
+  const sourceRef = useRef(null);  // 오디오 소스 (마이크)
+  const streamRef = useRef(null);  // 마이크 스트림
+  const intervalRef = useRef(null);  // 음성 감지 루프 타이머
   
   if (!name || !aiResponse) {
     // 이름 혹은 AI 응답 없이 접근한 경우 홈으로 보냄
@@ -20,6 +29,123 @@ const Chat = () => {
   // 뒤로가기
   const handleBack = () => {
     navigate('/'); // 홈으로 이동
+  };
+
+  // 실시간 인식 시작
+  const startAutoMode = async () => {
+    try {
+      // 마이크 권한 요청 + 스트림 얻기
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      // 오디오 컨텍스트 생성 (브라우저용 오디오 환경)
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+
+      // 마이크를 오디오 소스로 연결
+      const source = audioContext.createMediaStreamSource(stream);
+      sourceRef.current = source;
+
+      // 분석기 노드 생성 → 음성의 세기 측정용
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      analyserRef.current = analyser;
+
+      // 오디오 소스를 분석기에 연결
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.fftSize);
+
+      let silenceStart = null;
+      const silenceThreshold = 2000; // 2초 정적일 경우 멈춤 (단위: ms)
+
+      // 음성 볼륨 주기적으로 측정
+      const checkVolume = () => {
+        analyser.getByteTimeDomainData(dataArray);
+        const volume = dataArray.reduce((a, b) => a + Math.abs(b - 128), 0) / dataArray.length;
+
+        const now = Date.now();
+
+        // 말하는 중이면 녹음 시작
+        if (volume > 5) {
+          // 일정 볼륨 이상 → 말 시작 → 녹음 시작
+          silenceStart = null;  // 말하는 중이면 바로 녹음 시작 + 정적 시간 초기화
+
+          if (!mediaRecorderRef.current) {
+            startAutoRecording();  // 실시간 모드용 녹음 함수
+          }
+        } else {
+          // 정적 상태 감지
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            if (!silenceStart) {
+              silenceStart = now;  // 처음 정적 시작 시간 기록
+            } else if (now - silenceStart > silenceThreshold) {
+              stopAutoRecording();  // 정적 시간이 기준 이상 → 녹음 종료
+              silenceStart = null;
+            }
+          }
+        }
+
+        setIsSpeaking(volume > 5);  // UI에 초록불 표시용
+      };
+
+      // 200ms마다 음성 감지 루프 실행
+      intervalRef.current = setInterval(checkVolume, 200);
+      setIsAutoMode(true);
+    } catch (err) {
+      alert('마이크 접근에 실패했습니다.');
+      console.error(err);
+    }
+  };
+
+  // 실시간 인식 종료
+  const stopAutoMode = () => {
+    // 루프 중단
+    clearInterval(intervalRef.current);
+    setIsAutoMode(false);
+    setIsSpeaking(false);
+
+    // 녹음 중이면 정지
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+
+    // 마이크 스트림 종료
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+
+    // 오디오 컨텍스트 종료
+    audioContextRef.current?.close();
+
+    // 리셋
+    mediaRecorderRef.current = null;
+  };
+
+  // 실시간 모드용 녹음 시작
+  const startAutoRecording = () => {
+    const recorder = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm' });
+    audioChunksRef.current = [];
+
+    recorder.ondataavailable = (event) => {
+      audioChunksRef.current.push(event.data);
+    };
+
+    recorder.onstop = async () => {
+      const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      await sendToSTT(blob);
+      mediaRecorderRef.current = null;
+    };
+
+    recorder.start();
+    mediaRecorderRef.current = recorder;
+  };
+
+  // 실시간 모드용 녹음 종료
+  const stopAutoRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
   };
 
   // 녹음 시작
@@ -95,6 +221,33 @@ const Chat = () => {
         <p style={{ marginTop: '10px' }}>{aiResponse}</p>
       </div>
 
+      {/* 토글 버튼 */}
+      <div style={{ marginTop: '30px' }}>
+        <button
+          onClick={isAutoMode ? stopAutoMode : startAutoMode}
+          style={{
+            padding: '12px 24px',
+            fontSize: '16px',
+            backgroundColor: isAutoMode ? '#f44336' : '#4caf50',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer'
+          }}
+        >
+          {isAutoMode ? '🛑 음성 인식 종료' : '🎤 실시간 음성 인식 시작'}
+        </button>
+      </div>
+
+      {/* 실시간 음성 감지 박스 */}
+      <div style={{
+        margin: '20px auto',
+        width: '30px',
+        height: '30px',
+        backgroundColor: isSpeaking ? 'green' : '#ccc',
+        borderRadius: '50%'
+      }} />
+      
       {/* 녹음 컨트롤 */}
       <div style={{ marginTop: '30px' }}>
         <button
