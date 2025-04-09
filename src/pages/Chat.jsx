@@ -12,6 +12,7 @@ const Chat = () => {
   const [isAutoMode, setIsAutoMode] = useState(false);  // 실시간 인식 토글 상태
   const [isSpeaking, setIsSpeaking] = useState(false);  // 현재 말하고 있는지 여부
   const [aiResponseText, setAiResponseText] = useState(aiResponse);
+  const [isFinished, setIsFinished] = useState(finished || false);
   
   const mediaRecorderRef = useRef(null);  // 녹음기 인스턴스 저장
   const audioChunksRef = useRef([]);  // 녹음된 오디오 조각들
@@ -243,6 +244,7 @@ const Chat = () => {
 
       const data = await res.json();
       setAiResponseText(data.response || '응답 없음');
+      setIsFinished(data.finished || false);  // LLM finished 상태 갱신
       
     } catch (err) {
       console.error('LLM 요청 실패:', err);
@@ -339,9 +341,9 @@ const Chat = () => {
         top: 20,
         right: 20,
         fontSize: '12px',
-        color: finished ? 'green' : 'gray'
+        color: isFinished  ? 'green' : 'gray'
       }}>
-        상태: {finished ? '완료됨 ✅' : '진행 중... ⏳'}
+        상태: {isFinished  ? '완료됨 ✅' : '진행 중... ⏳'}
       </div>
       
       <br />
