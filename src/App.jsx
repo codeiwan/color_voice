@@ -1,15 +1,13 @@
-import Listening from './components/Listening'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Home from './pages/Home';
 
 function App() {
   return (
-    <>
-      <Router>
-        <Routes>
-          <Route path="/listen" element={<Listening />} />
-        </Routes>
-      </Router>
-    </>
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+      </Routes>
+    </Router>
   )
 }
 
