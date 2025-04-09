@@ -5,9 +5,28 @@ const Home = () => {
   const [name, setName] = useState('');
   const navigate = useNavigate();
   
-  const handleStart = () => {
-    if (name.trim()) {
-      navigate('/chat', { state: { name } }); // state로 이름 전달
+  const handleStart = async () => {
+    if (!name.trim()) return; 
+
+    try {
+      const res = await fetch('https://personal-voice.onrender.com/info-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: name,
+          message: '시작할게요!',
+        }),
+      });
+
+      const data = await res.json();
+
+      // /chat로 이동하며 응답 결과 함께 전달
+      navigate('/chat', { state: { name, aiResponse: data.response, finished: data.finished } });
+    } catch (err) {
+      alert('서버 요청에 실패했습니다.');
+      console.error(err);
     }
   };
 
