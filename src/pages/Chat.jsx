@@ -67,7 +67,7 @@ const Chat = () => {
         const now = Date.now();
 
         // 말하는 중이면 녹음 시작
-        if (volume > 5) {
+        if (volume > 3) {
           // 일정 볼륨 이상 → 말 시작 → 녹음 시작
           silenceStart = null;  // 말하는 중이면 바로 녹음 시작 + 정적 시간 초기화
 
@@ -86,11 +86,11 @@ const Chat = () => {
           }
         }
 
-        setIsSpeaking(volume > 5);  // UI에 초록불 표시용
+        setIsSpeaking(volume > 4);  // UI에 초록불 표시용
       };
 
       // 200ms마다 음성 감지 루프 실행
-      intervalRef.current = setInterval(checkVolume, 200);
+      intervalRef.current = setInterval(checkVolume, 100);  // 감지 주기 100ms로 민감도 향상
       setIsAutoMode(true);
     } catch (err) {
       alert('마이크 접근에 실패했습니다.');
@@ -133,6 +133,7 @@ const Chat = () => {
 
     recorder.onstop = async () => {
       const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      await new Promise((res) => setTimeout(res, 50));  // 녹음 끝난 직후 50ms 기다렸다가 전송 (STT 안정화)
       await sendToSTT(blob);
       mediaRecorderRef.current = null;
     };
@@ -148,7 +149,7 @@ const Chat = () => {
     }
   };
 
-  // 녹음 시작
+  // 수동 녹음 시작
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -174,7 +175,7 @@ const Chat = () => {
     }
   };
 
-  // 녹음 종료
+  // 수동 녹음 종료
   const stopRecording = () => {
     if (mediaRecorder) {
       mediaRecorder.stop();
